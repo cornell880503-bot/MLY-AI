@@ -160,31 +160,6 @@ Shows:
 
 ---
 
-## Demo Flow (Interview / Presentation)
-
-```bash
-# 1. Generate a research brief
-mly-ai research --ticker AAPL --query "momentum signals Q1 2026"
-# → Rate it 4
-
-# 2. Generate strategy code
-mly-ai code --logic "60-day rolling Sharpe with dynamic position sizing"
-# → Rate it 5
-# → Save the code to /tmp/strat.py
-
-# 3. Red-team the generated code
-mly-ai test --strategy /tmp/strat.py --regime "2020 Covid Crash"
-# → Rate it 3
-
-# 4. Show telemetry
-mly-ai --dashboard   # Usage + satisfaction
-mly-ai report        # SQL analytics + chart
-```
-
-**Talking point:** Scene 2 generates code with real algorithmic flaws (`expanding().max()` normalization trap, log return / cumprod mismatch). Scene 3 independently identifies those flaws without being told — demonstrating the four-eyes principle in a multi-agent system.
-
----
-
 ## Key Design Decisions
 
 ### Masking Pipeline
