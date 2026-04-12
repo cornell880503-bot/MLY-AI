@@ -126,16 +126,38 @@ class ResearchAgent(_BaseAgent):
         self,
         masked_ticker: str,
         masked_query: str,
+        original_ticker: str | None = None,
     ) -> Tuple[str, int, int]:
         """
         Args:
-            masked_ticker: Ticker token (already masked by MaskingPipeline).
-            masked_query:  Query string (already masked).
+            masked_ticker:   Ticker token (already masked) — used in LLM prompt.
+            masked_query:    Query string (already masked) — used in LLM prompt.
+            original_ticker: Real ticker symbol — used for RAG retrieval only,
+                             never sent to the LLM.
 
         Returns:
             (response_text, input_tokens, output_tokens)
         """
-        docs = self._retriever.retrieve(ticker=masked_ticker, query=masked_query)
+        # RAG uses the original ticker so documents are found correctly.
+        # Only the LLM prompt receives the masked token.
+        rag_ticker = original_ticker or masked_ticker
+        docs = self._retriever.retrieve(ticker=rag_ticker, query=masked_query)
+
+        # Mask the original ticker inside retrieved document content so the
+        # LLM only ever sees the masked token — not the real symbol.
+        if original_ticker and original_ticker != masked_ticker:
+            docs = [
+                {
+                    **d,
+                    "content": re.sub(
+                        rf"\b{re.escape(original_ticker)}\b",
+                        masked_ticker,
+                        d["content"],
+                    ),
+                }
+                for d in docs
+            ]
+
         rag_block = self._build_rag_block(docs)
 
         system = (

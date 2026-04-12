@@ -198,7 +198,9 @@ def research(
     ) as prog:
         prog.add_task("[cyan]Retrieving documents and synthesising brief...", total=None)
         try:
-            response_masked, in_tok, out_tok = agent.run(masked_ticker, masked_query)
+            response_masked, in_tok, out_tok = agent.run(
+                masked_ticker, masked_query, original_ticker=ticker.upper()
+            )
         except Exception as exc:
             console.print(f"\n[red]Research agent failed: {exc}[/red]")
             db.log_interaction(
