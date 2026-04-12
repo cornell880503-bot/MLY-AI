@@ -256,7 +256,7 @@ class Database:
     # Raw SQL analytics (report command — demonstrates SQL proficiency)
     # ------------------------------------------------------------------
 
-    def get_sql_analytics(self) -> Dict[str, Any]:
+    def get_sql_analytics(self, days: int = 30) -> Dict[str, Any]:
         """
         Run raw SQL queries against the interactions table.
         Returns structured results for the `mly-ai report` command.
@@ -265,7 +265,7 @@ class Database:
         and to enable queries that aggregate across multiple dimensions
         more naturally than the ORM allows.
         """
-        _DAILY_SQL = """
+        _DAILY_SQL = f"""
             SELECT
                 DATE(timestamp)                          AS day,
                 COUNT(*)                                 AS calls,
@@ -273,9 +273,9 @@ class Database:
                 ROUND(SUM(estimated_cost_usd), 5)        AS cost_usd,
                 ROUND(AVG(response_time_ms), 0)          AS avg_latency_ms
             FROM interactions
+            WHERE timestamp >= DATE('now', '-{days} days')
             GROUP BY DATE(timestamp)
             ORDER BY day DESC
-            LIMIT 14
         """
 
         _USER_SQL = """
