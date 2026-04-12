@@ -66,7 +66,7 @@ SESSION_ID = str(uuid.uuid4())
 # ---------------------------------------------------------------------------
 
 
-_GEMINI_BASE_URL = "https://generativeai.googleapis.com/v1beta/openai/"
+_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 
 def _get_client() -> OpenAI:
