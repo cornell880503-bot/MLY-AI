@@ -7,19 +7,17 @@ Agents:
   SecurityValidator   — Code security audit, second-pass validator (Scene 2)
   RiskManagerAgent    — Adversarial strategy red-teaming (Scene 3)
 
-All agents talk to Claude via the Anthropic SDK. Prompt caching headers are
-set where context blocks are large enough to benefit.
+All agents talk to Gemini via Google's OpenAI-compatible endpoint using the
+openai SDK. Set GEMINI_API_KEY to authenticate.
 """
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
-import anthropic
-
-MODEL = "claude-sonnet-4-6"
+MODEL = "gemini-2.0-flash"
 PRIVATE_DATA_DIR = Path(__file__).parent.parent / "private_data"
 
 # ---------------------------------------------------------------------------
@@ -28,7 +26,7 @@ PRIVATE_DATA_DIR = Path(__file__).parent.parent / "private_data"
 
 
 class _BaseAgent:
-    def __init__(self, client: anthropic.Anthropic) -> None:
+    def __init__(self, client: Any) -> None:
         self.client = client
         self.last_input_tokens: int = 0
         self.last_output_tokens: int = 0
@@ -40,15 +38,16 @@ class _BaseAgent:
         messages: List[Dict],
         max_tokens: int = 2048,
     ) -> str:
-        response = self.client.messages.create(
+        # OpenAI-compatible format: system message prepended to messages list
+        full_messages = [{"role": "system", "content": system}] + messages
+        response = self.client.chat.completions.create(
             model=MODEL,
             max_tokens=max_tokens,
-            system=system,
-            messages=messages,
+            messages=full_messages,
         )
-        self.last_input_tokens = response.usage.input_tokens
-        self.last_output_tokens = response.usage.output_tokens
-        return response.content[0].text
+        self.last_input_tokens = response.usage.prompt_tokens
+        self.last_output_tokens = response.usage.completion_tokens
+        return response.choices[0].message.content
 
 
 # ---------------------------------------------------------------------------
@@ -119,7 +118,7 @@ class _RAGRetriever:
 class ResearchAgent(_BaseAgent):
     """Synthesises internal RAG documents into an alpha-discovery brief."""
 
-    def __init__(self, client: anthropic.Anthropic) -> None:
+    def __init__(self, client: Any) -> None:
         super().__init__(client)
         self._retriever = _RAGRetriever()
 

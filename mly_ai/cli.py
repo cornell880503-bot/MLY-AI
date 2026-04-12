@@ -19,7 +19,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-import anthropic
+from openai import OpenAI
 import typer
 from rich import box
 from rich.console import Console
@@ -66,22 +66,26 @@ SESSION_ID = str(uuid.uuid4())
 # ---------------------------------------------------------------------------
 
 
-def _get_client() -> anthropic.Anthropic:
-    """Initialise the Anthropic client; exit cleanly if key is missing."""
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+_GEMINI_BASE_URL = "https://generativeai.googleapis.com/v1beta/openai/"
+
+
+def _get_client() -> OpenAI:
+    """Initialise the Gemini client via OpenAI-compatible endpoint."""
+    api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         console.print(
             Panel(
-                "[red]Environment variable [bold]ANTHROPIC_API_KEY[/bold] is not set.\n\n"
+                "[red]Environment variable [bold]GEMINI_API_KEY[/bold] is not set.\n\n"
                 "Export your key before running mly-ai:\n"
-                "  [bold]export ANTHROPIC_API_KEY='sk-ant-...'[/bold][/red]",
+                "  [bold]export GEMINI_API_KEY='AIza...'[/bold]\n\n"
+                "Get a free key at: https://aistudio.google.com/apikey[/red]",
                 title="[bold red]Configuration Error[/bold red]",
                 border_style="red",
                 padding=(1, 2),
             )
         )
         raise typer.Exit(code=1)
-    return anthropic.Anthropic(api_key=api_key)
+    return OpenAI(api_key=api_key, base_url=_GEMINI_BASE_URL)
 
 
 def _header(title: str, subtitle: str = "") -> None:

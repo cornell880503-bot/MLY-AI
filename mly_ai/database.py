@@ -66,9 +66,9 @@ class Database:
     across working directories.
     """
 
-    # Claude Sonnet 4.6 — USD per million tokens (as of 2025)
-    _INPUT_COST_PER_MTOK: float = 3.00
-    _OUTPUT_COST_PER_MTOK: float = 15.00
+    # Gemini 2.0 Flash — USD per million tokens (as of 2025)
+    _INPUT_COST_PER_MTOK: float = 0.075
+    _OUTPUT_COST_PER_MTOK: float = 0.30
 
     def __init__(self, db_path: str | None = None) -> None:
         if db_path is None:
