@@ -5,6 +5,7 @@ Entry points:
   mly-ai research --ticker <TICKER> --query <TEXT>
   mly-ai code     --logic <DESCRIPTION>
   mly-ai test     --strategy <FILE> --regime <CONDITION>
+  mly-ai report   [--days N]
   mly-ai          --dashboard
 
 All prompts are masked before LLM transmission.
@@ -15,6 +16,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -35,7 +37,7 @@ from mly_ai.agents import (
     SecurityValidatorAgent,
     WorkerCodeAgent,
 )
-from mly_ai.dashboard import render_dashboard
+from mly_ai.dashboard import render_dashboard, render_report
 from mly_ai.database import Database
 from mly_ai.masking import MaskingPipeline
 
@@ -60,13 +62,26 @@ db = Database()
 masker = MaskingPipeline()
 SESSION_ID = str(uuid.uuid4())
 
+_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+
+
+def _get_user() -> str:
+    """Resolve the current user from MLY_USER env var or system login."""
+    env_user = os.environ.get("MLY_USER", "").strip()
+    if env_user:
+        return env_user
+    try:
+        return os.getlogin()
+    except OSError:
+        return os.environ.get("USER", os.environ.get("USERNAME", "anonymous"))
+
+
+CURRENT_USER = _get_user()
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 
 def _get_client() -> OpenAI:
@@ -77,8 +92,7 @@ def _get_client() -> OpenAI:
             Panel(
                 "[red]Environment variable [bold]GEMINI_API_KEY[/bold] is not set.\n\n"
                 "Export your key before running mly-ai:\n"
-                "  [bold]export GEMINI_API_KEY='AIza...'[/bold]\n\n"
-                "Get a free key at: https://aistudio.google.com/apikey[/red]",
+                "  [bold]export GEMINI_API_KEY='AIza...'[/bold][/red]",
                 title="[bold red]Configuration Error[/bold red]",
                 border_style="red",
                 padding=(1, 2),
@@ -98,14 +112,46 @@ def _header(title: str, subtitle: str = "") -> None:
     console.print(Panel(text, border_style="cyan", box=box.DOUBLE_EDGE, padding=(0, 2)))
 
 
-def _footer(in_tok: int, out_tok: int, masked_total: int) -> None:
+def _footer(in_tok: int, out_tok: int, masked_total: int, response_ms: int = 0) -> None:
     cost = db.estimate_cost(in_tok, out_tok)
+    rt_str = f"  |  Response time: {response_ms:,}ms" if response_ms else ""
     console.print(
         f"\n[dim]  Tokens: {in_tok:,} in / {out_tok:,} out  "
         f"|  Est. cost: ${cost:.5f}  "
-        f"|  Items masked: {masked_total}  "
+        f"|  Items masked: {masked_total}"
+        f"{rt_str}"
+        f"  |  User: {CURRENT_USER}  "
         f"|  Session: {SESSION_ID[:8]}...[/dim]"
     )
+
+
+def _collect_feedback() -> tuple[int | None, str | None]:
+    """Prompt for a 1–5 star rating. Non-blocking — Enter skips."""
+    console.print()
+    try:
+        raw = console.input(
+            "[dim]  Rate this response [1-5, Enter to skip]: [/dim]"
+        ).strip()
+    except (EOFError, KeyboardInterrupt):
+        return None, None
+
+    if not raw:
+        return None, None
+
+    if raw.isdigit() and 1 <= int(raw) <= 5:
+        rating = int(raw)
+        stars = "★" * rating + "☆" * (5 - rating)
+        try:
+            comment = console.input(
+                "[dim]  Optional comment (Enter to skip): [/dim]"
+            ).strip() or None
+        except (EOFError, KeyboardInterrupt):
+            comment = None
+        console.print(f"[green]  Saved: {stars}  Thanks![/green]")
+        return rating, comment
+
+    console.print("[dim]  Skipped.[/dim]")
+    return None, None
 
 
 # ---------------------------------------------------------------------------
@@ -132,6 +178,7 @@ def _main(
       [blue]mly-ai research[/blue]  --ticker AAPL --query "earnings trend Q3"
       [green]mly-ai code[/green]     --logic  "rolling Sharpe with 60-day window"
       [red]mly-ai test[/red]     --strategy ./strat.py --regime "2020 Covid Crash"
+      [cyan]mly-ai report[/cyan]    --days 30
       [cyan]mly-ai[/cyan]         --dashboard
     """
     if dashboard:
@@ -173,23 +220,23 @@ def research(
     masked_text, mapping = masker.mask(raw_input, explicit_tickers=[ticker])
     counts = masker.count_masked(mapping)
 
-    # Recover the masked ticker token to pass to the agent
     masked_ticker = ticker.upper()
     for token, original in mapping.items():
         if original == ticker.upper():
             masked_ticker = token
             break
 
-    # Strip the "Ticker: <TOKEN>. " prefix to get the clean masked query
     prefix = f"Ticker: {masked_ticker}. "
     masked_query = masked_text[len(prefix):] if masked_text.startswith(prefix) else masked_text
 
     console.print(
         f"\n[dim]  Masking pipeline: {counts['tickers']} ticker(s), "
-        f"{counts['projects']} project name(s), {counts['schemas']} schema(s) masked[/dim]"
+        f"{counts['projects']} project name(s), {counts['schemas']} schema(s) masked"
+        f"  |  User: {CURRENT_USER}[/dim]"
     )
 
     # ── Research ───────────────────────────────────────────────────────
+    t_start = time.time()
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -210,12 +257,15 @@ def research(
                 success=False,
                 error_message=str(exc),
                 session_id=SESSION_ID,
+                user_name=CURRENT_USER,
+                response_time_ms=int((time.time() - t_start) * 1000),
             )
             raise typer.Exit(code=1)
 
+    response_ms = int((time.time() - t_start) * 1000)
     response = masker.unmask(response_masked, mapping)
 
-    db.log_interaction(
+    row_id = db.log_interaction(
         feature="research",
         input_summary=f"{ticker} | {query[:120]}",
         masked_counts=counts,
@@ -223,6 +273,8 @@ def research(
         output_tokens=out_tok,
         success=True,
         session_id=SESSION_ID,
+        user_name=CURRENT_USER,
+        response_time_ms=response_ms,
     )
 
     console.print()
@@ -234,7 +286,11 @@ def research(
             padding=(1, 2),
         )
     )
-    _footer(in_tok, out_tok, sum(counts.values()))
+    _footer(in_tok, out_tok, sum(counts.values()), response_ms)
+
+    rating, comment = _collect_feedback()
+    if rating is not None:
+        db.update_feedback(row_id, rating, comment)
 
 
 # ---------------------------------------------------------------------------
@@ -267,8 +323,11 @@ def code(
     masked_logic, mapping = masker.mask(logic)
     counts = masker.count_masked(mapping)
     console.print(
-        f"\n[dim]  Masking pipeline: {sum(counts.values())} item(s) masked[/dim]"
+        f"\n[dim]  Masking pipeline: {sum(counts.values())} item(s) masked"
+        f"  |  User: {CURRENT_USER}[/dim]"
     )
+
+    t_start = time.time()
 
     # ── Phase 1: Code Generation ───────────────────────────────────────
     console.print("\n[bold green]Phase 1[/bold green]  Worker Agent — generating code...")
@@ -290,6 +349,8 @@ def code(
                 success=False,
                 error_message=str(exc),
                 session_id=SESSION_ID,
+                user_name=CURRENT_USER,
+                response_time_ms=int((time.time() - t_start) * 1000),
             )
             raise typer.Exit(code=1)
 
@@ -318,10 +379,11 @@ def code(
             }
             in2, out2 = 0, 0
 
+    response_ms = int((time.time() - t_start) * 1000)
     in_tok = in1 + in2
     out_tok = out1 + out2
 
-    db.log_interaction(
+    row_id = db.log_interaction(
         feature="code",
         input_summary=logic[:120],
         masked_counts=counts,
@@ -329,6 +391,8 @@ def code(
         output_tokens=out_tok,
         success=True,
         session_id=SESSION_ID,
+        user_name=CURRENT_USER,
+        response_time_ms=response_ms,
     )
 
     # ── Security Summary ───────────────────────────────────────────────
@@ -360,7 +424,6 @@ def code(
     console.print()
     console.print(sec_table)
 
-    # ── Generated Code ─────────────────────────────────────────────────
     console.print()
     console.print(
         Panel(
@@ -369,7 +432,11 @@ def code(
             border_style="green",
         )
     )
-    _footer(in_tok, out_tok, sum(counts.values()))
+    _footer(in_tok, out_tok, sum(counts.values()), response_ms)
+
+    rating, comment = _collect_feedback()
+    if rating is not None:
+        db.update_feedback(row_id, rating, comment)
 
 
 # ---------------------------------------------------------------------------
@@ -396,7 +463,6 @@ def test(
         f"File: {Path(strategy).name}  |  Regime: {regime}",
     )
 
-    # ── Load strategy file ─────────────────────────────────────────────
     strat_path = Path(strategy)
     if not strat_path.exists():
         console.print(f"[red]  Strategy file not found: {strategy}[/red]")
@@ -410,21 +476,20 @@ def test(
 
     console.print(
         f"\n[dim]  Loaded: {strat_path.name}  ({len(strategy_code):,} chars, "
-        f"{strategy_code.count(chr(10))} lines)[/dim]"
+        f"{strategy_code.count(chr(10))} lines)  |  User: {CURRENT_USER}[/dim]"
     )
 
     client = _get_client()
     risk_agent = RiskManagerAgent(client)
 
-    # ── Masking ────────────────────────────────────────────────────────
     masked_code, mapping = masker.mask(strategy_code)
     counts = masker.count_masked(mapping)
     console.print(
         f"[dim]  Masking pipeline: {sum(counts.values())} item(s) masked[/dim]"
     )
 
-    # ── Risk Assessment ───────────────────────────────────────────────
     console.print(f"\n[bold red]Risk Manager Agent[/bold red]  — stress-testing under [italic]{regime}[/italic]...")
+    t_start = time.time()
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -443,10 +508,14 @@ def test(
                 success=False,
                 error_message=str(exc),
                 session_id=SESSION_ID,
+                user_name=CURRENT_USER,
+                response_time_ms=int((time.time() - t_start) * 1000),
             )
             raise typer.Exit(code=1)
 
-    db.log_interaction(
+    response_ms = int((time.time() - t_start) * 1000)
+
+    row_id = db.log_interaction(
         feature="test",
         input_summary=f"{strat_path.name} | {regime}",
         masked_counts=counts,
@@ -454,9 +523,10 @@ def test(
         output_tokens=out_tok,
         success=True,
         session_id=SESSION_ID,
+        user_name=CURRENT_USER,
+        response_time_ms=response_ms,
     )
 
-    # ── Risk Score Panel ───────────────────────────────────────────────
     risk_score: int = risk_report.get("risk_score", 50)
     impact: str = risk_report.get("regime_impact", "UNKNOWN")
     verdict: str = risk_report.get("verdict", "")
@@ -489,7 +559,6 @@ def test(
     console.print()
     console.print(score_table)
 
-    # ── Full Report ────────────────────────────────────────────────────
     full = masker.unmask(risk_report.get("full_report", ""), mapping)
     console.print()
     console.print(
@@ -500,7 +569,36 @@ def test(
             padding=(1, 2),
         )
     )
-    _footer(in_tok, out_tok, sum(counts.values()))
+    _footer(in_tok, out_tok, sum(counts.values()), response_ms)
+
+    rating, comment = _collect_feedback()
+    if rating is not None:
+        db.update_feedback(row_id, rating, comment)
+
+
+# ---------------------------------------------------------------------------
+# PM Analytics Report
+# ---------------------------------------------------------------------------
+
+
+@app.command("report")
+def report(
+    days: int = typer.Option(30, "--days", "-n", help="Lookback window in days."),
+) -> None:
+    """
+    [cyan]PM Analytics Report[/cyan]
+
+    SQL-driven product metrics: satisfaction scores, user engagement,
+    cost projections, and a time-series usage chart.
+
+    Demonstrates data analysis and visualization proficiency.
+    """
+    _header(
+        "PM ANALYTICS REPORT",
+        f"SQL-driven insights  |  {days}-day trend window  |  User: {CURRENT_USER}",
+    )
+    report_data = db.get_sql_analytics(days=days)
+    render_report(report_data, days=days)
 
 
 # ---------------------------------------------------------------------------

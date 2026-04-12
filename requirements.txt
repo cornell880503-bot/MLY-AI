@@ -4,3 +4,4 @@ rich>=13.7.0
 pandas>=2.0.0
 numpy>=1.24.0
 sqlalchemy>=2.0.0
+plotext>=5.2.8

@@ -1,15 +1,16 @@
 """
 Database Layer — SQLite persistence for interaction logging and analytics.
 
-Every CLI invocation is recorded with token counts, cost estimates, and
-masking metrics so the --dashboard command can surface ROI telemetry.
+Every CLI invocation is recorded with token counts, cost estimates, masking
+metrics, user identity, response latency, and satisfaction ratings so the
+--dashboard and report commands can surface ROI and adoption telemetry.
 """
 
 from __future__ import annotations
 
 import os
 from datetime import datetime
-from typing import Dict, List
+from typing import Any, Dict, List
 
 from sqlalchemy import (
     Boolean,
@@ -20,7 +21,7 @@ from sqlalchemy import (
     String,
     Text,
     create_engine,
-    func,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
@@ -38,20 +39,25 @@ class Interaction(Base):
 
     __tablename__ = "interactions"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
-    feature = Column(String(50), nullable=False)   # research | code | test
-    input_summary = Column(Text, nullable=True)
-    masked_tickers = Column(Integer, default=0, nullable=False)
-    masked_projects = Column(Integer, default=0, nullable=False)
-    masked_schemas = Column(Integer, default=0, nullable=False)
-    total_masked = Column(Integer, default=0, nullable=False)
-    input_tokens = Column(Integer, default=0, nullable=False)
-    output_tokens = Column(Integer, default=0, nullable=False)
+    id               = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp        = Column(DateTime, default=datetime.utcnow, nullable=False)
+    feature          = Column(String(50), nullable=False)   # research | code | test
+    input_summary    = Column(Text, nullable=True)
+    masked_tickers   = Column(Integer, default=0, nullable=False)
+    masked_projects  = Column(Integer, default=0, nullable=False)
+    masked_schemas   = Column(Integer, default=0, nullable=False)
+    total_masked     = Column(Integer, default=0, nullable=False)
+    input_tokens     = Column(Integer, default=0, nullable=False)
+    output_tokens    = Column(Integer, default=0, nullable=False)
     estimated_cost_usd = Column(Float, default=0.0, nullable=False)
-    success = Column(Boolean, default=True, nullable=False)
-    error_message = Column(Text, nullable=True)
-    session_id = Column(String(36), nullable=True)
+    success          = Column(Boolean, default=True, nullable=False)
+    error_message    = Column(Text, nullable=True)
+    session_id       = Column(String(36), nullable=True)
+    # --- PM analytics additions ---
+    user_name        = Column(String(100), nullable=True)   # MLY_USER env or system user
+    user_rating      = Column(Integer, nullable=True)       # 1–5 satisfaction score
+    user_comment     = Column(Text, nullable=True)          # optional free-text feedback
+    response_time_ms = Column(Integer, nullable=True)       # end-to-end latency in ms
 
 
 # ---------------------------------------------------------------------------
@@ -66,7 +72,7 @@ class Database:
     across working directories.
     """
 
-    # Gemini 2.0 Flash — USD per million tokens (as of 2025)
+    # Gemini 3 Flash Preview — USD per million tokens
     _INPUT_COST_PER_MTOK: float = 0.075
     _OUTPUT_COST_PER_MTOK: float = 0.30
 
@@ -79,7 +85,38 @@ class Database:
         self.db_path = db_path
         self._engine = create_engine(f"sqlite:///{db_path}", echo=False)
         Base.metadata.create_all(self._engine)
+        self._migrate()
         self._Session = sessionmaker(bind=self._engine)
+
+    def _migrate(self) -> None:
+        """Add new columns to an existing DB without dropping data.
+
+        SQLAlchemy's create_all() does not ALTER existing tables, so we
+        inspect the live schema via PRAGMA and issue ALTER TABLE ADD COLUMN
+        for any column that is missing. This is idempotent and safe.
+        """
+        new_columns = [
+            ("user_name",        "VARCHAR(100)"),
+            ("user_rating",      "INTEGER"),
+            ("user_comment",     "TEXT"),
+            ("response_time_ms", "INTEGER"),
+        ]
+        with self._engine.connect() as conn:
+            existing = {
+                row[1]
+                for row in conn.execute(
+                    text("PRAGMA table_info(interactions)")
+                ).fetchall()
+            }
+            for col_name, col_type in new_columns:
+                if col_name not in existing:
+                    conn.execute(
+                        text(
+                            f"ALTER TABLE interactions "
+                            f"ADD COLUMN {col_name} {col_type}"
+                        )
+                    )
+            conn.commit()
 
     # ------------------------------------------------------------------
     # Write
@@ -96,6 +133,8 @@ class Database:
         success: bool = True,
         error_message: str | None = None,
         session_id: str | None = None,
+        user_name: str | None = None,
+        response_time_ms: int | None = None,
     ) -> int:
         """Persist one interaction. Returns the new row ID."""
         cost = self.estimate_cost(input_tokens, output_tokens)
@@ -116,17 +155,33 @@ class Database:
                 success=success,
                 error_message=error_message,
                 session_id=session_id,
+                user_name=user_name,
+                response_time_ms=response_time_ms,
             )
             session.add(row)
             session.commit()
             return row.id
 
+    def update_feedback(
+        self,
+        interaction_id: int,
+        rating: int,
+        comment: str | None = None,
+    ) -> None:
+        """Store a user satisfaction rating against an existing interaction."""
+        with self._Session() as session:
+            row = session.get(Interaction, interaction_id)
+            if row:
+                row.user_rating = rating
+                row.user_comment = comment
+                session.commit()
+
     # ------------------------------------------------------------------
-    # Read / analytics
+    # ORM analytics (dashboard)
     # ------------------------------------------------------------------
 
     def get_analytics(self) -> Dict:
-        """Aggregate all interactions for the dashboard."""
+        """Aggregate all interactions for the --dashboard view."""
         with self._Session() as session:
             rows: List[Interaction] = session.query(Interaction).all()
 
@@ -140,6 +195,7 @@ class Database:
                 "masked_breakdown": {"tickers": 0, "projects": 0, "schemas": 0},
                 "success_rate": 0.0,
                 "recent": [],
+                "satisfaction": {},
             }
 
         total_calls = len(rows)
@@ -167,9 +223,22 @@ class Database:
                 "masked": r.total_masked,
                 "cost": r.estimated_cost_usd,
                 "success": r.success,
+                "user": r.user_name or "—",
+                "rating": r.user_rating,
             }
             for r in recent
         ]
+
+        # Per-feature satisfaction summary
+        satisfaction: Dict[str, Dict] = {}
+        for f in ["research", "code", "test"]:
+            rated = [r for r in rows if r.feature == f and r.user_rating is not None]
+            total_f = len([r for r in rows if r.feature == f])
+            satisfaction[f] = {
+                "avg_rating": round(sum(r.user_rating for r in rated) / len(rated), 1) if rated else None,
+                "rated": len(rated),
+                "total": total_f,
+            }
 
         return {
             "total_calls": total_calls,
@@ -180,6 +249,85 @@ class Database:
             "masked_breakdown": masked_breakdown,
             "success_rate": success_rate,
             "recent": recent_data,
+            "satisfaction": satisfaction,
+        }
+
+    # ------------------------------------------------------------------
+    # Raw SQL analytics (report command — demonstrates SQL proficiency)
+    # ------------------------------------------------------------------
+
+    def get_sql_analytics(self) -> Dict[str, Any]:
+        """
+        Run raw SQL queries against the interactions table.
+        Returns structured results for the `mly-ai report` command.
+
+        Raw SQL is used intentionally here to demonstrate SQL proficiency
+        and to enable queries that aggregate across multiple dimensions
+        more naturally than the ORM allows.
+        """
+        _DAILY_SQL = """
+            SELECT
+                DATE(timestamp)                          AS day,
+                COUNT(*)                                 AS calls,
+                SUM(total_masked)                        AS items_protected,
+                ROUND(SUM(estimated_cost_usd), 5)        AS cost_usd,
+                ROUND(AVG(response_time_ms), 0)          AS avg_latency_ms
+            FROM interactions
+            GROUP BY DATE(timestamp)
+            ORDER BY day DESC
+            LIMIT 14
+        """
+
+        _USER_SQL = """
+            SELECT
+                COALESCE(user_name, 'anonymous')         AS user,
+                COUNT(*)                                 AS calls,
+                ROUND(AVG(user_rating), 2)               AS avg_rating,
+                SUM(total_masked)                        AS items_masked,
+                ROUND(SUM(estimated_cost_usd), 4)        AS total_cost_usd
+            FROM interactions
+            GROUP BY user_name
+            ORDER BY calls DESC
+        """
+
+        _SATISFACTION_SQL = """
+            SELECT
+                feature,
+                COUNT(*)                                 AS total_calls,
+                COUNT(user_rating)                       AS rated_calls,
+                ROUND(AVG(user_rating), 2)               AS avg_rating,
+                ROUND(AVG(response_time_ms) / 1000.0, 1) AS avg_latency_sec
+            FROM interactions
+            GROUP BY feature
+            ORDER BY total_calls DESC
+        """
+
+        _PEAK_SQL = """
+            SELECT
+                DATE(timestamp)  AS day,
+                COUNT(*)         AS calls
+            FROM interactions
+            GROUP BY DATE(timestamp)
+            ORDER BY calls DESC
+            LIMIT 1
+        """
+
+        with self._engine.connect() as conn:
+            daily = [dict(r._mapping) for r in conn.execute(text(_DAILY_SQL))]
+            users = [dict(r._mapping) for r in conn.execute(text(_USER_SQL))]
+            satisfaction = [dict(r._mapping) for r in conn.execute(text(_SATISFACTION_SQL))]
+            peak = conn.execute(text(_PEAK_SQL)).fetchone()
+
+        return {
+            "daily": daily,
+            "users": users,
+            "satisfaction": satisfaction,
+            "peak_day": dict(peak._mapping) if peak else None,
+            "sql_queries": {
+                "daily_trend": _DAILY_SQL.strip(),
+                "user_breakdown": _USER_SQL.strip(),
+                "feature_satisfaction": _SATISFACTION_SQL.strip(),
+            },
         }
 
     # ------------------------------------------------------------------
