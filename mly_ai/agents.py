@@ -22,7 +22,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-MODEL = "models/gemini-3-flash-preview"
+MODEL = "gemini-2.0-flash"
 PRIVATE_DATA_DIR = Path(__file__).parent.parent / "private_data"
 
 # ---------------------------------------------------------------------------
