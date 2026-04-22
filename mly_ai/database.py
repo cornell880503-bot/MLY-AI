@@ -330,6 +330,15 @@ class Database:
             },
         }
 
+    def execute_query(self, sql: str) -> List[Dict]:
+        """Execute a raw SELECT query and return results as dicts. Only SELECT allowed."""
+        stripped = sql.strip().upper()
+        if not stripped.startswith("SELECT"):
+            raise ValueError("Only SELECT queries are permitted.")
+        with self._engine.connect() as conn:
+            result = conn.execute(text(sql))
+            return [dict(r._mapping) for r in result.fetchall()]
+
     # ------------------------------------------------------------------
     # Utility
     # ------------------------------------------------------------------

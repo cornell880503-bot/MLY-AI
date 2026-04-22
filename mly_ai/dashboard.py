@@ -29,7 +29,7 @@ console = Console()
 def render_dashboard(analytics: Dict) -> None:
     """Render the analytics dashboard to the terminal."""
     console.print()
-    console.rule("[bold cyan]  MLY-AI  |  ANALYTICS DASHBOARD  [/bold cyan]")
+    console.rule("[bold cyan]  P72  |  ANALYTICS DASHBOARD  [/bold cyan]")
     console.print(
         f"[dim]  Report generated: "
         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  |  "
@@ -40,8 +40,8 @@ def render_dashboard(analytics: Dict) -> None:
         console.print(
             Panel(
                 "[yellow]No interactions have been recorded yet.\n"
-                "Run [bold]mly-ai research[/bold], [bold]mly-ai code[/bold], "
-                "or [bold]mly-ai test[/bold] to generate telemetry.[/yellow]",
+                "Run [bold]p72-ai research[/bold], [bold]p72-ai code[/bold], "
+                "or [bold]p72-ai test[/bold] to generate telemetry.[/yellow]",
                 title="[bold yellow]Dashboard Empty[/bold yellow]",
                 border_style="yellow",
                 padding=(1, 4),
@@ -264,7 +264,7 @@ def _render_recent_activity(analytics: Dict) -> None:
 def render_report(report_data: Dict, days: int = 30) -> None:
     """Render the PM analytics report with SQL-driven metrics and ASCII chart."""
     console.print()
-    console.rule("[bold cyan]  MLY-AI  |  PM ANALYTICS REPORT  [/bold cyan]")
+    console.rule("[bold cyan]  P72  |  PM ANALYTICS REPORT  [/bold cyan]")
     console.print(
         f"[dim]  Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}  "
         f"|  {days}-day window[/dim]\n"

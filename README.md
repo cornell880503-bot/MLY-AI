@@ -1,23 +1,27 @@
-# MLY-AI — Millennium AI Infrastructure Gateway
+# P72 Alpha Gateway
 
-> Secure, audited LLM access for quantitative traders and researchers.  
+> **Actionable Intelligence from Unstructured Data.**  
+> Secure, audited LLM access for quantitative traders and cross-border researchers.  
 > Built to demonstrate production-grade AI PM thinking: masking pipeline, multi-agent workflows, SQL analytics, feedback collection, and terminal-native visualization.
 
 ---
 
 ## What This Is
 
-MLY-AI is a CLI tool that acts as a secure gateway between Millennium's analysts and external LLMs (Gemini). Every prompt is **masked before transmission** — tickers, internal project names, and SQL schema references are replaced with opaque tokens. Every interaction is **logged to SQLite** with token counts, cost estimates, response latency, user identity, and satisfaction ratings.
+P72 Alpha Gateway is a CLI tool that acts as a secure gateway between analysts and external LLMs (Gemini). Every prompt is **masked before transmission** — tickers, internal project names, and SQL schema references are replaced with opaque tokens. Every interaction is **logged to SQLite** with token counts, cost estimates, response latency, user identity, and satisfaction ratings.
 
-The demo covers three scenes from a typical quant workflow, each showcasing a distinct AI capability:
+The tool covers five capabilities spanning a typical cross-border quant workflow:
 
-| Scene | Command | What It Does |
-|-------|---------|-------------|
-| 1 — Alpha Discovery | `mly-ai research` | RAG over internal docs → masked research brief |
-| 2 — Quant Coding | `mly-ai code` | Code generation → Security validation (two agents) |
-| 3 — Risk Red-Teaming | `mly-ai test` | Adversarial stress-test of a strategy under a market regime |
-| Analytics Dashboard | `mly-ai --dashboard` | ORM-based usage telemetry + satisfaction ratings |
-| PM Report | `mly-ai report` | Raw SQL analytics + ASCII bar chart + PM insights |
+| Command | Feature | What It Does |
+|---------|---------|-------------|
+| `p72-ai research` | Alpha Discovery | RAG over internal docs → masked research brief |
+| `p72-ai code` | Quant Coding | Code generation → Security validation (two agents) |
+| `p72-ai test` | Risk Red-Teaming | Adversarial stress-test of a strategy under a market regime |
+| `p72-ai alpha` | Alpha Intelligence | Cross-language (CN/EN) research doc → structured investment brief |
+| `p72-ai verify` | Thesis Verification | Bull/Bear/Synthesizer debate → CIO risk-adjusted verdict |
+| `p72-ai query` | NL Database Query | Natural language → SQLite → Rich table + optional chart |
+| `p72-ai --dashboard` | Analytics Dashboard | ORM-based usage telemetry + satisfaction ratings |
+| `p72-ai report` | PM Analytics Report | Raw SQL analytics + ASCII bar chart + PM insights |
 
 ---
 
@@ -25,7 +29,7 @@ The demo covers three scenes from a typical quant workflow, each showcasing a di
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        mly-ai CLI                           │
+│                     p72-ai CLI                              │
 │          (Typer + Rich — mly_ai/cli.py)                     │
 └────────────┬──────────────────────────┬────────────────────┘
              │                          │
@@ -37,7 +41,7 @@ The demo covers three scenes from a typical quant workflow, each showcasing a di
     │ • Project names │       │ • log_interaction() │
     │ • SQL schemas   │       │ • update_feedback() │
     └────────┬────────┘       │ • get_analytics()   │
-             │                │ • get_sql_analytics()│
+             │                │ • execute_query()   │
              │                └─────────────────────┘
     ┌────────▼──────────────────────────────────────┐
     │              Agent System (mly_ai/agents.py)  │
@@ -46,24 +50,17 @@ The demo covers three scenes from a typical quant workflow, each showcasing a di
     │  WorkerCodeAgent    — Python code generation  │
     │  SecurityValidator  — Static + LLM audit      │
     │  RiskManagerAgent   — Adversarial red-teaming │
+    │  AlphaIntelAgent    — CN/EN cross-lang intel  │
+    │  BullCaseAgent      — Bull thesis from RAG    │
+    │  BearCaseAgent      — Contrarian bear case    │
+    │  SynthesizerAgent   — CIO risk-adj verdict    │
+    │  TextToSQLAgent     — NL → SQLite query       │
     └────────────────┬──────────────────────────────┘
                      │
     ┌────────────────▼──────────────────────────────┐
     │   Gemini (via OpenAI-compatible endpoint)     │
     │   model: models/gemini-3-flash-preview        │
     └───────────────────────────────────────────────┘
-```
-
-### Multi-Agent Pipeline (Scene 2)
-
-```
-User input
-  → MaskingPipeline.mask()          # Tickers/projects/schemas → tokens
-  → WorkerCodeAgent.run()           # Generate Python strategy code
-  → SecurityValidatorAgent.run()    # Static regex + LLM security audit
-  → MaskingPipeline.unmask()        # Restore original identifiers
-  → Display + Feedback prompt
-  → Database.log_interaction()      # Store tokens, cost, latency, user
 ```
 
 ---
@@ -97,10 +94,10 @@ export MLY_USER="yourname"
 
 ## Usage
 
-### Scene 1 — Alpha Discovery
+### research — Alpha Discovery
 
 ```bash
-mly-ai research --ticker AAPL --query "momentum alpha signals and earnings catalyst"
+p72-ai research --ticker AAPL --query "momentum alpha signals and earnings catalyst"
 ```
 
 - Retrieves internal documents via simulated RAG
@@ -108,10 +105,10 @@ mly-ai research --ticker AAPL --query "momentum alpha signals and earnings catal
 - Returns a structured research brief with source citations
 - Prompts for a 1–5 satisfaction rating
 
-### Scene 2 — Quant Code Generation
+### code — Quant Code Generation
 
 ```bash
-mly-ai code --logic "60-day rolling Sharpe ratio with dynamic position sizing"
+p72-ai code --logic "60-day rolling Sharpe ratio with dynamic position sizing"
 ```
 
 - **Phase 1:** WorkerCodeAgent generates type-annotated, vectorised Python
@@ -119,26 +116,75 @@ mly-ai code --logic "60-day rolling Sharpe ratio with dynamic position sizing"
 - Displays Security Score, Risk Level, and APPROVED/REVIEW REQUIRED verdict
 - Shows syntax-highlighted code with line numbers
 
-### Scene 3 — Strategy Red-Teaming
+### test — Strategy Red-Teaming
 
 ```bash
-# Save Scene 2 output or any strategy file
-mly-ai test --strategy /tmp/strat.py --regime "2020 Covid Crash"
-
-# Other regimes to try
-mly-ai test --strategy /tmp/strat.py --regime "2019 Bull Market"
-mly-ai test --strategy /tmp/strat.py --regime "2022 Rate Hike Cycle"
-mly-ai test --strategy /tmp/strat.py --regime "2008 Financial Crisis"
+p72-ai test --strategy /tmp/strat.py --regime "2020 Covid Crash"
 ```
 
 - RiskManagerAgent acts as an adversarial Chief Risk Officer
 - Outputs Risk Score (1–100), Regime Impact, Vulnerabilities, Tail-Risk Scenarios, Missing Controls
-- Key insight: **a poorly designed strategy scores high-risk even in a bull market** — the agent audits strategy logic, not just market conditions
+
+### alpha — Cross-Language Intelligence Brief
+
+```bash
+# Analyze a Chinese research PDF
+p72-ai alpha --file private_data/BABA_cn_research.md --ticker BABA
+
+# Analyze any research document (PDF or text)
+p72-ai alpha --file /tmp/report.pdf --ticker BABA
+```
+
+- Reads PDF (via `pypdf`) or plain text research documents
+- Handles Chinese-language input: extracts key data points without full translation
+- Runs through the masking pipeline before LLM transmission
+- Outputs three structured sections:
+  - **MACRO CONTEXT** — macroeconomic backdrop
+  - **TICKER IMPACT** — specific price drivers, catalysts, risks
+  - **DIFFERENTIATED SIGNAL** — what this source reveals that consensus is missing
+
+### verify — Thesis Verification (Bull/Bear/Synthesizer)
+
+```bash
+p72-ai verify --ticker BABA --thesis "Alibaba Cloud AI pivot creates structural re-rating opportunity"
+```
+
+Three-agent adversarial debate:
+
+- **Phase 1 — BullCaseAgent:** Builds the strongest bull case from internal RAG documents
+- **Phase 2 — BearCaseAgent:** Destroys the bull case with contradictions and external friction
+- **Phase 3 — SynthesizerAgent:** CIO-level synthesis with conviction score, delta analysis, and recommended action
+
+Output includes:
+- Summary table: CONVICTION label, CONVICTION SCORE (1–100), KEY RISK, RECOMMENDED ACTION
+- Full CIO synthesis panel
+- Collapsible bull and bear case panels
+
+### query — Natural Language Database Query
+
+```bash
+# Simple query
+p72-ai query --q "how many calls were made per feature this week"
+
+# With visualization
+p72-ai query --q "total cost per feature" --viz
+
+# Other examples
+p72-ai query --q "average response time by feature"
+p72-ai query --q "top 5 most expensive interactions"
+p72-ai query --q "daily call volume last 7 days"
+```
+
+- TextToSQLAgent translates the question to a valid SQLite SELECT
+- Shows the generated SQL in a syntax-highlighted panel
+- Executes safely (only SELECT allowed) against the interactions database
+- Renders results as a Rich table
+- `--viz` adds a plotext bar chart when numeric data is present
 
 ### Analytics Dashboard
 
 ```bash
-mly-ai --dashboard
+p72-ai --dashboard
 ```
 
 Shows: Total calls, cost, tokens, items masked, success rate, avg satisfaction, avg response time, feature usage bars, security masking breakdown, per-feature satisfaction ratings, recent activity table.
@@ -146,8 +192,8 @@ Shows: Total calls, cost, tokens, items masked, success rate, avg satisfaction, 
 ### PM Analytics Report
 
 ```bash
-mly-ai report           # 30-day default
-mly-ai report --days 7  # Custom window
+p72-ai report           # 30-day default
+p72-ai report --days 7  # Custom window
 ```
 
 Shows:
@@ -172,26 +218,25 @@ Four-layer masking runs before every LLM call:
 
 Tokens use format `[[TICKER_A1B2C3D4]]`. A stop-word list prevents common English words (THE, API, SQL, etc.) from being masked.
 
-For RAG (Scene 1): the **original ticker** is used for document retrieval locally; only the **masked token** is sent to the LLM. Retrieved document content is also masked before inclusion in the prompt.
+### Cross-Language Support (Feature A)
+
+`AlphaIntelAgent` handles Chinese-language research documents without sending full translations to the LLM. The agent is instructed to extract key data points from Chinese text while producing English output — preserving fidelity while minimizing token usage.
+
+### Multi-Agent Debate (Feature B)
+
+The verify command implements a structured adversarial workflow:
+```
+BullCaseAgent (RAG-grounded) → BearCaseAgent (external friction) → SynthesizerAgent (CIO verdict)
+```
+Each agent receives the previous agent's output, creating a genuine debate rather than parallel independent analyses.
 
 ### SQL Analytics
 
-`get_sql_analytics()` uses raw SQL via `sqlalchemy.text()` — intentionally not using the ORM — to make SQL proficiency visible and enable multi-dimensional aggregations:
-
-```sql
--- Daily usage trend
-SELECT DATE(timestamp) AS day, COUNT(*) AS calls,
-       SUM(total_masked) AS items_protected,
-       ROUND(AVG(response_time_ms), 0) AS avg_latency_ms
-FROM interactions
-WHERE timestamp >= DATE('now', '-30 days')
-GROUP BY DATE(timestamp)
-ORDER BY day DESC
-```
+`get_sql_analytics()` uses raw SQL via `sqlalchemy.text()` — intentionally not using the ORM — to make SQL proficiency visible and enable multi-dimensional aggregations. `execute_query()` accepts only SELECT statements for safe user-driven queries.
 
 ### Feedback Collection
 
-After every command, users are prompted:
+After every command (except `query`), users are prompted:
 ```
   Rate this response [1-5, Enter to skip]:
   Optional comment (Enter to skip):
@@ -208,17 +253,19 @@ Ratings are stored back to the interaction row via `update_feedback()`. Per-feat
 ## File Structure
 
 ```
-mly-ai/
+p72-alpha-gateway/
 ├── mly_ai/
 │   ├── __init__.py
-│   ├── cli.py          # Typer commands, user tracking, feedback loop
-│   ├── agents.py       # ResearchAgent, WorkerCodeAgent, SecurityValidator, RiskManager
+│   ├── cli.py          # Typer commands: research, code, test, alpha, verify, query, report
+│   ├── agents.py       # 9 agents across 5 features
 │   ├── masking.py      # 4-layer masking pipeline
-│   ├── database.py     # SQLAlchemy ORM + raw SQL analytics
+│   ├── database.py     # SQLAlchemy ORM + raw SQL analytics + execute_query
 │   └── dashboard.py    # Rich terminal UI (dashboard + report)
 ├── private_data/       # Simulated internal research documents (RAG source)
 │   ├── AAPL_analysis.md
 │   ├── TSLA_analysis.md
+│   ├── BABA_cn_research.md   # Chinese-language BABA research (Feature A)
+│   ├── china_macro_cn.md     # Chinese macro strategy brief (Feature A)
 │   ├── market_regimes.md
 │   ├── risk_frameworks.md
 │   └── quant_strategies.md
@@ -238,6 +285,7 @@ mly-ai/
 | `sqlalchemy` | ORM + raw SQL execution |
 | `pandas` / `numpy` | Used in generated strategy code |
 | `plotext` | Terminal-native ASCII bar charts |
+| `pypdf` | PDF text extraction for `p72-ai alpha` |
 
 ---
 

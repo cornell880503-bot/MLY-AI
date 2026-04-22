@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mly-ai"
+name = "p72-alpha-gateway"
 version = "1.0.0"
-description = "Millennium AI Infrastructure Gateway — Secure LLM access for traders & quants"
+description = "P72 Alpha Gateway — Secure LLM access for traders & quants"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -16,9 +16,11 @@ dependencies = [
     "numpy>=1.24.0",
     "sqlalchemy>=2.0.0",
     "plotext>=5.2.8",
+    "pypdf>=3.0.0",
 ]
 
 [project.scripts]
+p72-ai = "mly_ai.cli:main_entry"
 mly-ai = "mly_ai.cli:main_entry"
 
 [tool.setuptools.packages.find]

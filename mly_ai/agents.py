@@ -1,11 +1,16 @@
 """
-Agent System — Multi-agent workflows for the three MLY-AI scenes.
+Agent System — Multi-agent workflows for the P72 Alpha Gateway scenes.
 
 Agents:
   ResearchAgent       — Alpha discovery via simulated RAG (Scene 1)
   WorkerCodeAgent     — High-performance quant code generation (Scene 2)
   SecurityValidator   — Code security audit, second-pass validator (Scene 2)
   RiskManagerAgent    — Adversarial strategy red-teaming (Scene 3)
+  AlphaIntelAgent     — Cross-language intelligence synthesizer (Feature A)
+  BullCaseAgent       — Bull thesis builder from RAG context (Feature B)
+  BearCaseAgent       — Contrarian bear case generator (Feature B)
+  SynthesizerAgent    — Risk-adjusted synthesis of bull/bear debate (Feature B)
+  TextToSQLAgent      — Natural language to SQLite query translator (Feature C)
 
 All agents talk to Gemini via Google's OpenAI-compatible endpoint using the
 openai SDK. Set GEMINI_API_KEY to authenticate.
@@ -434,3 +439,183 @@ class RiskManagerAgent(_BaseAgent):
             "regime": regime,
             "full_report": raw,
         }
+
+
+# ---------------------------------------------------------------------------
+# Feature A — Alpha Intelligence Agent
+# ---------------------------------------------------------------------------
+
+
+class AlphaIntelAgent(_BaseAgent):
+    """Cross-language intelligence synthesizer for Chinese/English research documents."""
+
+    def run(self, content: str, ticker: str | None = None) -> Tuple[str, int, int]:
+        system = (
+            "You are a senior cross-border research analyst fluent in both Chinese and English "
+            "financial markets. You specialize in extracting actionable intelligence from "
+            "Chinese-language research reports and translating insights for Western PMs.\n"
+            "RULES:\n"
+            "• If the input is in Chinese, translate key data points; do NOT translate the entire document.\n"
+            "• Output ONLY the three sections below, no preamble.\n"
+            "• Be specific and data-driven. Cite numbers where available.\n"
+            "• The Differentiated Signal must explicitly state how it differs from market consensus."
+        )
+        ticker_clause = f" Focus your analysis on {ticker}." if ticker else ""
+        user_prompt = (
+            f"Analyze the following research document and produce a structured English investment brief.{ticker_clause}\n\n"
+            f"DOCUMENT:\n{content[:6000]}\n\n"
+            "Output EXACTLY in this format:\n"
+            "## MACRO CONTEXT\n<2-3 sentences on the macroeconomic backdrop>\n\n"
+            "## TICKER IMPACT\n<Specific impact on the target asset — price drivers, catalysts, risks>\n\n"
+            "## DIFFERENTIATED SIGNAL\n<What does this source reveal that consensus is missing? Be explicit about the delta.>"
+        )
+        text = self._chat(system=system, messages=[{"role": "user", "content": user_prompt}], max_tokens=1800)
+        return text, self.last_input_tokens, self.last_output_tokens
+
+
+# ---------------------------------------------------------------------------
+# Feature B — Verify Agents (Bull / Bear / Synthesizer)
+# ---------------------------------------------------------------------------
+
+
+class BullCaseAgent(_BaseAgent):
+    """Generates a structured bull thesis from internal RAG context."""
+
+    def __init__(self, client: Any) -> None:
+        super().__init__(client)
+        self._retriever = _RAGRetriever()
+
+    def run(self, masked_ticker: str, masked_thesis: str, original_ticker: str | None = None) -> Tuple[str, int, int]:
+        rag_ticker = original_ticker or masked_ticker
+        docs = self._retriever.retrieve(ticker=rag_ticker, query=masked_thesis)
+        if original_ticker and original_ticker != masked_ticker:
+            docs = [
+                {**d, "content": re.sub(rf"\b{re.escape(original_ticker)}\b", masked_ticker, d["content"])}
+                for d in docs
+            ]
+        rag_block = ResearchAgent._build_rag_block(docs)  # reuse static method
+        system = (
+            "You are a bullish sell-side analyst. Your job is to construct the strongest possible "
+            "bull case for the given investment thesis using the provided internal research.\n"
+            "Be specific. Cite data points. Do not hedge or add caveats."
+        )
+        user_prompt = (
+            f"{rag_block}\n\n"
+            f"Asset: {masked_ticker}\n"
+            f"Thesis to support: {masked_thesis}\n\n"
+            "Build the bull case in EXACTLY this format:\n"
+            "BULL_SCORE: <1-100 conviction>\n"
+            "KEY_DRIVERS:\n- <driver>\nCATALYSTS:\n- <catalyst>\nSUPPORTING_DATA:\n- <data point>"
+        )
+        text = self._chat(system=system, messages=[{"role": "user", "content": user_prompt}], max_tokens=1200)
+        return text, self.last_input_tokens, self.last_output_tokens
+
+
+class BearCaseAgent(_BaseAgent):
+    """Contrarian agent — finds friction and contradictions in the bull case."""
+
+    def run(self, masked_ticker: str, bull_case: str, masked_thesis: str) -> Tuple[str, int, int]:
+        system = (
+            "You are a skeptical risk analyst and contrarian investor. "
+            "Your job is to DESTROY the bull case presented to you.\n"
+            "Simulate external market intelligence: macro headwinds, regulatory risks, "
+            "competitive threats, positioning crowding, valuation traps.\n"
+            "Be brutal. Every point must directly contradict a specific bull claim."
+        )
+        user_prompt = (
+            f"Asset: {masked_ticker}\n"
+            f"Original thesis: {masked_thesis}\n\n"
+            f"BULL CASE TO CHALLENGE:\n{bull_case}\n\n"
+            "Produce the bear case in EXACTLY this format:\n"
+            "BEAR_SCORE: <1-100 risk level>\n"
+            "CONTRADICTIONS:\n- <specific rebuttal to a bull point>\n"
+            "EXTERNAL_FRICTION:\n- <macro/regulatory/competitive risk>\n"
+            "MOST_DANGEROUS_ASSUMPTION:\n<single sentence identifying the bull case's fatal flaw>"
+        )
+        text = self._chat(system=system, messages=[{"role": "user", "content": user_prompt}], max_tokens=1200)
+        return text, self.last_input_tokens, self.last_output_tokens
+
+
+class SynthesizerAgent(_BaseAgent):
+    """Synthesizes bull/bear debate into a risk-adjusted final view."""
+
+    def run(self, masked_ticker: str, bull_case: str, bear_case: str) -> Tuple[Dict, int, int]:
+        system = (
+            "You are a Chief Investment Officer with 30 years of experience. "
+            "You have heard the bull and bear cases. Now give the definitive risk-adjusted verdict.\n"
+            "Your job is to identify the DELTA — what one side knows that the other is missing."
+        )
+        user_prompt = (
+            f"Asset: {masked_ticker}\n\n"
+            f"BULL CASE:\n{bull_case}\n\n"
+            f"BEAR CASE:\n{bear_case}\n\n"
+            "Produce the synthesis in EXACTLY this format:\n"
+            "CONVICTION: <STRONG_BUY|BUY|HOLD|SELL|STRONG_SELL>\n"
+            "CONVICTION_SCORE: <1-100>\n"
+            "DELTA: <one paragraph — what the bull knows that bear misses, AND what bear knows that bull ignores>\n"
+            "RECOMMENDED_ACTION: <specific, actionable — position size, entry condition, stop-loss>\n"
+            "KEY_RISK: <single most important risk to monitor>"
+        )
+        raw = self._chat(system=system, messages=[{"role": "user", "content": user_prompt}], max_tokens=1000)
+        report = self._parse_synthesis(raw)
+        return report, self.last_input_tokens, self.last_output_tokens
+
+    @staticmethod
+    def _parse_synthesis(raw: str) -> Dict:
+        def _extract(pattern: str, default: str = "") -> str:
+            m = re.search(pattern, raw, re.IGNORECASE | re.DOTALL)
+            return m.group(1).strip() if m else default
+
+        score_str = _extract(r"CONVICTION_SCORE:\s*(\d+)", "50")
+        return {
+            "conviction": _extract(r"CONVICTION:\s*(\w+)", "HOLD"),
+            "conviction_score": int(score_str) if score_str.isdigit() else 50,
+            "delta": _extract(r"DELTA:\s*(.+?)(?=\nRECOMMENDED_ACTION:|\Z)", ""),
+            "recommended_action": _extract(r"RECOMMENDED_ACTION:\s*(.+?)(?=\nKEY_RISK:|\Z)", ""),
+            "key_risk": _extract(r"KEY_RISK:\s*(.+?)(?:\n|$)", ""),
+            "full_report": raw,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Feature C — Text-to-SQL Agent
+# ---------------------------------------------------------------------------
+
+_INTERACTIONS_SCHEMA = """
+Table: interactions
+Columns:
+  id INTEGER PRIMARY KEY
+  timestamp DATETIME
+  feature VARCHAR(50)         -- values: 'research','code','test','alpha','verify','query'
+  input_summary TEXT
+  masked_tickers INTEGER
+  masked_projects INTEGER
+  masked_schemas INTEGER
+  total_masked INTEGER
+  input_tokens INTEGER
+  output_tokens INTEGER
+  estimated_cost_usd REAL
+  success BOOLEAN
+  session_id VARCHAR(36)
+  user_name VARCHAR(100)
+  user_rating INTEGER          -- 1-5 satisfaction score
+  user_comment TEXT
+  response_time_ms INTEGER
+"""
+
+
+class TextToSQLAgent(_BaseAgent):
+    """Translates natural language questions into SQLite queries over the interactions table."""
+
+    def run(self, question: str) -> Tuple[str, int, int]:
+        system = (
+            "You are a SQLite expert. Translate natural language questions into valid SQLite SELECT queries.\n"
+            "Output ONLY the SQL query — no markdown, no explanation, no semicolons at the end.\n"
+            "Use only columns that exist in the schema. Always add LIMIT 100 unless the user specifies otherwise.\n"
+            f"Schema:\n{_INTERACTIONS_SCHEMA}"
+        )
+        user_prompt = f"Question: {question}\n\nSQLite query:"
+        sql = self._chat(system=system, messages=[{"role": "user", "content": user_prompt}], max_tokens=300)
+        # Strip markdown fences if model adds them
+        sql = re.sub(r"```(?:sql)?\s*", "", sql).strip().rstrip(";")
+        return sql, self.last_input_tokens, self.last_output_tokens
