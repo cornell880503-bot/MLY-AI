@@ -30,13 +30,13 @@ The tool covers five capabilities spanning a typical cross-border quant workflow
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                     p72-ai CLI                              │
-│          (Typer + Rich — mly_ai/cli.py)                     │
+│          (Typer + Rich — p72_ai/cli.py)                     │
 └────────────┬──────────────────────────┬────────────────────┘
              │                          │
     ┌────────▼────────┐       ┌─────────▼──────────┐
     │ Masking Pipeline│       │  SQLite Database    │
-    │ mly_ai/masking  │       │  mly_ai/database    │
-    │                 │       │  ~/.mly-ai/mly_ai.db│
+    │ p72_ai/masking  │       │  p72_ai/database    │
+    │                 │       │  ~/.p72/p72.db      │
     │ • Tickers       │       │                     │
     │ • Project names │       │ • log_interaction() │
     │ • SQL schemas   │       │ • update_feedback() │
@@ -44,7 +44,7 @@ The tool covers five capabilities spanning a typical cross-border quant workflow
              │                │ • execute_query()   │
              │                └─────────────────────┘
     ┌────────▼──────────────────────────────────────┐
-    │              Agent System (mly_ai/agents.py)  │
+    │              Agent System (p72_ai/agents.py)  │
     │                                               │
     │  ResearchAgent      — RAG + brief synthesis   │
     │  WorkerCodeAgent    — Python code generation  │
@@ -76,7 +76,7 @@ The tool covers five capabilities spanning a typical cross-border quant workflow
 
 ```bash
 git clone <repo-url>
-cd mly-ai
+cd p72-alpha-gateway
 pip install -e .
 ```
 
@@ -87,7 +87,7 @@ pip install -e .
 export GEMINI_API_KEY="AIza..."
 
 # Optional — sets your name in analytics
-export MLY_USER="yourname"
+export P72_USER="yourname"
 ```
 
 ---
@@ -254,7 +254,7 @@ Ratings are stored back to the interaction row via `update_feedback()`. Per-feat
 
 ```
 p72-alpha-gateway/
-├── mly_ai/
+├── p72_ai/
 │   ├── __init__.py
 │   ├── cli.py          # Typer commands: research, code, test, alpha, verify, query, report
 │   ├── agents.py       # 9 agents across 5 features
@@ -294,4 +294,4 @@ p72-alpha-gateway/
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `GEMINI_API_KEY` | Yes | Google AI Studio API key |
-| `MLY_USER` | No | Your name — appears in analytics. Falls back to system login. |
+| `P72_USER` | No | Your name — appears in analytics. Falls back to system login. |
